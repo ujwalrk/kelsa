@@ -36,7 +36,7 @@ interface RazorpayOptions {
 
 export default function UpgradePage() {
   const router = useRouter();
-  const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY;
+  const razorpayKey = process.env.RAZORPAY_KEY_ID;
   const [razorpayReady, setRazorpayReady] = useState(false);
 
   useEffect(() => {
