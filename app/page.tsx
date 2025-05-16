@@ -1,3 +1,4 @@
+// app/page.tsx
 'use client'
 import { supabase } from '../lib/supabase'
 import Box from '@mui/material/Box';
@@ -6,6 +7,14 @@ import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import Link from 'next/link';
+import { DM_Sans } from 'next/font/google';
+
+const dmSans = DM_Sans({
+  weight: ['400', '500', '700'],
+  subsets: ['latin'],
+  display: 'swap',
+});
 
 export default function HomePage() {
   const router = useRouter()
@@ -24,30 +33,42 @@ export default function HomePage() {
   };
 
   return (
-    <Box sx={{ bgcolor: '#fafaff', minHeight: '100vh' }}>
+    <Box sx={{ bgcolor: '#fafaff', minHeight: '100vh', fontFamily: dmSans.style.fontFamily }}>
       {/* Navigation Bar */}
       <Box
         sx={{
-          bgcolor: '#3f51b5', // Blue theme color for the navbar
-          py: 2, // Vertical padding
-          px: 4, // Horizontal padding
+          bgcolor: '#3f51b5',
+          py: 2,
+          px: 4,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'flex-start', // Left align content
+          justifyContent: 'space-between',
         }}
       >
         <Typography
-          variant="h6" // Adjust font size as needed
+          variant="h6"
           sx={{
             fontWeight: 700,
-            color: '#fff', // White color for the logo text
+            color: '#fff',
             cursor: 'pointer',
             userSelect: 'none',
           }}
-          onClick={() => router.push('/')} // Make it clickable to go to home
+          onClick={() => router.push('/')}
         >
           Kelsa
         </Typography>
+        {/* Added Navigation Links */}
+        <Box display="flex" gap={2}>
+          <Link href="/contact-us" passHref>
+            <Button variant="text" sx={{ color: '#fff' }}>Contact Us</Button>
+          </Link>
+          <Link href="/terms-and-conditions" passHref>
+            <Button variant="text" sx={{ color: '#fff' }}>Terms & Conditions</Button>
+          </Link>
+          <Link href="/privacy-policy" passHref>
+            <Button variant="text" sx={{ color: '#fff' }}>Privacy Policy</Button>
+          </Link>
+        </Box>
       </Box>
 
       {/* Hero Section */}
@@ -212,3 +233,4 @@ export default function HomePage() {
     </Box>
   )
 }
+
