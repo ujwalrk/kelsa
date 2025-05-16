@@ -68,6 +68,9 @@ export default function HomePage() {
           <Link href="/privacy-policy" passHref>
             <Button variant="text" sx={{ color: '#fff' }}>Privacy Policy</Button>
           </Link>
+          <Link href="/cancellations-and-refunds" passHref>
+            <Button variant="text" sx={{ color: '#fff' }}>Cancellations & Refunds</Button>
+          </Link>
         </Box>
       </Box>
 
@@ -233,4 +236,3 @@ export default function HomePage() {
     </Box>
   )
 }
-
