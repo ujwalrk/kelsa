@@ -1,44 +1,68 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import Razorpay from 'razorpay';
-import { v4 as uuidv4 } from 'uuid';
 
-function getRazorpayInstance() {
-  return new Razorpay({
-    key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!,
-    key_secret: process.env.RAZORPAY_KEY_SECRET!,
-  });
+// Define an interface for the request body
+interface PaymentRequestBody {
+  amount: number;
+}
+
+// Define the error type for Razorpay
+interface RazorpayError extends Error {
+  statusCode?: number;
+  error?: {
+    code?: string;
+    description?: string;
+  };
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { amount } = body;
-
-    if (typeof amount !== 'number' || amount <= 0) {
-      return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
+    const body = await req.json() as PaymentRequestBody;
+    
+    // Initialize Razorpay with your key_id and key_secret
+    const razorpay = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID || '',
+      key_secret: process.env.RAZORPAY_KEY_SECRET || '',
+    });
+    
+    // Ensure we have the keys
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      throw new Error('Razorpay credentials are not configured');
     }
 
-    const razorpay = getRazorpayInstance();
-
+    // Create a payment capture to generate a payment link
+    const paymentCapture = 1;
+    const amount = body.amount * 100; // Convert to paisa
+    
     const options = {
-      amount: amount * 100, // in paisa
+      amount: amount,
       currency: 'INR',
-      receipt: `receipt_order_${uuidv4()}`,
-      payment_capture: 1,
+      receipt: `receipt_${Date.now()}`,
+      payment_capture: paymentCapture,
     };
-
-    const order = await razorpay.orders.create(options);
-
+    
+    // Create order using the Razorpay SDK
+    const response = await razorpay.orders.create(options);
+    
+    // Return the order details to the client
     return NextResponse.json({
-      id: order.id,
-      currency: order.currency,
-      amount: order.amount, // Note: could be string or number
+      id: response.id,
+      currency: response.currency,
+      amount: response.amount,
     });
-  } catch (err) {
-    console.error('Razorpay Order Creation Error:', err);
-    return NextResponse.json(
-      { error: 'Razorpay order creation failed' },
-      { status: 500 }
+  } catch (err: unknown) {
+    // Type guard to handle RazorpayError properties if available
+    const razorpayError = err as RazorpayError;
+    
+    console.error(
+      razorpayError.message || 'Unknown error',
+      razorpayError.statusCode,
+      razorpayError.error
     );
+    
+    return NextResponse.json({ 
+      error: 'Razorpay order failed',
+      message: razorpayError.message || 'Unknown error'
+    }, { status: 500 });
   }
 }
