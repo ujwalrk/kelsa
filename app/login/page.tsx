@@ -18,7 +18,7 @@ export default function Login() {
     checkUser()
   }, [router])
 
-  const handleLogin = async (e: any) => {
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) setError(error.message)
@@ -36,7 +36,7 @@ export default function Login() {
           {error && <Typography color="error">{error}</Typography>}
           <Button type="submit" variant="contained" fullWidth sx={{ mt: 2 }}>Sign In</Button>
         </form>
-        <Button onClick={() => router.push('/register')} sx={{ mt: 2 }} fullWidth>Don't have an account? Sign Up</Button>
+        <Button onClick={() => router.push('/register')} sx={{ mt: 2 }} fullWidth>Don&apos;t have an account? Sign Up</Button>
       </Paper>
     </Box>
   )

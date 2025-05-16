@@ -19,7 +19,7 @@ export default function Register() {
     checkUser()
   }, [router])
 
-  const handleRegister = async (e: any) => {
+  const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (password !== confirm) {
       setError('Passwords do not match')
