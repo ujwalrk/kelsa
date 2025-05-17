@@ -1,7 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 
 // Interface for the request body
 interface VerifyRequestBody {
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Initialize Supabase client
-    const supabase = createServerComponentClient({ cookies });
+    const supabase = createRouteHandlerClient({ cookies });
     
     // Get the current user
     const { data: { user } } = await supabase.auth.getUser();
@@ -74,16 +74,20 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
     
+    console.log("User successfully verified and status updated:", user.id);
+    
     return NextResponse.json({
       success: true,
-      message: 'Payment verified successfully'
+      message: 'Payment verified successfully, user status updated'
     });
     
   } catch (error) {
     console.error('Payment verification error:', error);
+    // Add more specific error detail if available
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
     return NextResponse.json({
       success: false,
-      message: 'Server error during verification'
+      message: `Server error during verification: ${errorMessage}`,
     }, { status: 500 });
   }
 }

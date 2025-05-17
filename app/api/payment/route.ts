@@ -55,14 +55,17 @@ export async function POST(req: NextRequest) {
     const razorpayError = err as RazorpayError;
     
     console.error(
+      'Razorpay order creation error:',
       razorpayError.message || 'Unknown error',
-      razorpayError.statusCode,
-      razorpayError.error
+      'Status Code:', razorpayError.statusCode,
+      'Details:', razorpayError.error
     );
     
     return NextResponse.json({ 
       error: 'Razorpay order failed',
-      message: razorpayError.message || 'Unknown error'
-    }, { status: 500 });
+      message: razorpayError.message || 'Unknown error',
+      details: razorpayError.error,
+      statusCode: razorpayError.statusCode || 500
+    }, { status: razorpayError.statusCode || 500 });
   }
 }
