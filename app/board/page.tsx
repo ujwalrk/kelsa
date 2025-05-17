@@ -199,6 +199,37 @@ export default function BoardPage() {
     setEditingColumnName("");
   };
 
+  const handleDowngrade = async () => {
+    const { error } = await supabase.auth.updateUser({
+      data: { premium: false }
+    });
+    
+    if (error) {
+      console.error("Error downgrading account:", error);
+      // Handle error (maybe show a notification)
+      return;
+    }
+    
+    // Update the local state and re-fetch user data
+    setPremium(false);
+    const { data: { user: updatedUser } } = await supabase.auth.getUser();
+    if (updatedUser) {
+      setUser(updatedUser);
+      // Ensure the premium status in the state is updated from the refetched user data
+      let isPremium = updatedUser.user_metadata?.premium;
+      if (isPremium === undefined) {
+        isPremium = false;
+      }
+      setPremium(isPremium);
+    }
+    
+    // Close the menu
+    handleMenuClose();
+    
+    // Refresh the page to update UI
+    window.location.reload();
+  };
+
   if (loading) return <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh"><CircularProgress /></Box>;
 
   return (
@@ -236,7 +267,11 @@ export default function BoardPage() {
               {user?.email}
             </MenuItem>
             <Divider />
-            {!premium && (
+            {premium ? (
+              <MenuItem onClick={handleDowngrade}>
+                Downgrade to Free
+              </MenuItem>
+            ) : (
               <MenuItem onClick={() => { handleMenuClose(); router.push('/upgrade'); }}>
                 Upgrade
               </MenuItem>

@@ -1,5 +1,5 @@
 'use client'
-import { Box, Typography, Button, Paper, List, ListItem, ListItemIcon, ListItemText } from '@mui/material';
+import { Box, Typography, Button, Paper, List, ListItem, ListItemIcon, ListItemText, Alert, Snackbar } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
@@ -23,12 +23,16 @@ interface RazorpayOptions {
   currency: string;
   name: string;
   description: string;
+  order_id?: string;
   handler: (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string; }) => void;
   prefill: {
     name: string;
     email: string | undefined;
   };
   theme: { color: string };
+  modal: {
+    ondismiss: () => void;
+  };
 }
 
 export default function UpgradePage() {
@@ -36,6 +40,10 @@ export default function UpgradePage() {
   // Use the actual Razorpay key ID for client-side code
   const razorpayKey = "rzp_live_gTcPg2fRhuGcUS";
   const [razorpayReady, setRazorpayReady] = useState(false);
+  const [isPremium, setIsPremium] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | undefined>(undefined); // Added userEmail state
+  const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' as 'info' | 'success' | 'error' });
+  const [pendingPayment, setPendingPayment] = useState(false);
 
   useEffect(() => {
     // Load Razorpay script if it's not already loaded
@@ -49,20 +57,48 @@ export default function UpgradePage() {
       } else {
         setRazorpayReady(true);
       }
+
+      // Check if user is already premium
+      const checkPremiumStatus = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setUserEmail(user.email);
+          const isPremiumUser = user.user_metadata?.premium || false;
+          setIsPremium(isPremiumUser);
+        } else {
+          // Not logged in, redirect to login
+          router.push('/login');
+        }
+      };
+
+      checkPremiumStatus();
     }
-  }, []);
+  }, [router]);
 
   const handleUpgrade = async () => {
     try {
       // Check if Razorpay is loaded
       if (!window.Razorpay) {
-        alert('Payment gateway is still loading. Please try again in a moment.');
+        setAlert({
+          open: true,
+          message: 'Payment gateway is still loading. Please try again in a moment.',
+          severity: 'error'
+        });
         return;
       }
 
       // Get user info
       const { data: { user } } = await supabase.auth.getUser();
-      
+
+      if (!user) {
+        setAlert({
+          open: true,
+          message: 'You need to be logged in to upgrade.',
+          severity: 'error'
+        });
+        return;
+      }
+
       // First create order from the server
       const response = await fetch('/api/payment', {
         method: 'POST',
@@ -73,22 +109,23 @@ export default function UpgradePage() {
           amount: 1, // 1 INR for test
         }),
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to create order');
       }
-      
+
       const orderData = await response.json();
-      
+      setPendingPayment(true);
+
       // Then initialize Razorpay with the order data
       const options: RazorpayOptions = {
         key: razorpayKey,
         amount: orderData.amount,
         currency: orderData.currency || 'INR',
         name: 'Kelsa Premium',
-        description: 'Unlock unlimited columns and advanced features',
-        //order_id: orderData.id, // Use the order ID from the server
-        handler: async function(response) {
+        description: 'Unlock More Features',
+        order_id: orderData.id, // Use the order ID from the server
+        handler: async function (response) {
           // Verify the payment on the server side
           const verifyResponse = await fetch('/api/payment/verify', {
             method: 'POST',
@@ -101,13 +138,34 @@ export default function UpgradePage() {
               razorpay_signature: response.razorpay_signature
             }),
           });
-          
+
           if (verifyResponse.ok) {
-            // Update user to premium
-            await supabase.auth.updateUser({ data: { premium: true } });
-            router.push('/board');
+            // Payment successful
+            setPendingPayment(false);
+            setAlert({
+              open: true,
+              message: 'Payment successful! You are now a premium user.',
+              severity: 'success'
+            });
+
+            // Update local state and re-fetch user data
+            setIsPremium(true);
+            const { data: { user: updatedUser } } = await supabase.auth.getUser();
+            if (updatedUser) {
+              setUserEmail(updatedUser.email);
+            }
+
+            // Wait a bit before redirecting to make sure the user sees the success message
+            setTimeout(() => {
+              router.push('/board');
+            }, 2000);
           } else {
-            alert('Payment verification failed. Please contact support.');
+            setPendingPayment(false);
+            setAlert({
+              open: true,
+              message: 'Payment verification failed. Please contact support.',
+              severity: 'error'
+            });
           }
         },
         prefill: {
@@ -115,6 +173,17 @@ export default function UpgradePage() {
           email: user?.email,
         },
         theme: { color: '#6366f1' },
+        modal: {
+          ondismiss: function () {
+            // Handle the case when user closes the Razorpay modal
+            setPendingPayment(false);
+            setAlert({
+              open: true,
+              message: 'Payment cancelled. You can try again later.',
+              severity: 'info'
+            });
+          }
+        }
       };
 
       // Initialize and open Razorpay
@@ -122,36 +191,128 @@ export default function UpgradePage() {
       rzp.open();
     } catch (error) {
       console.error('Payment error:', error);
-      alert('Something went wrong. Please try again later.');
+      setPendingPayment(false);
+      setAlert({
+        open: true,
+        message: 'Something went wrong. Please try again later.',
+        severity: 'error'
+      });
     }
+  };
+
+  const handleDowngrade = async () => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        data: { premium: false }
+      });
+
+      if (error) {
+        throw new Error('Failed to downgrade account');
+      }
+
+      // Update the local state and re-fetch user data
+      setIsPremium(false);
+      const { data: { user: updatedUser } } = await supabase.auth.getUser();
+      if (updatedUser) {
+        setUserEmail(updatedUser.email);
+      }
+      setAlert({
+        open: true,
+        message: 'You have been downgraded to a free account.',
+        severity: 'success'
+      });
+
+      // Wait a bit before redirecting
+      setTimeout(() => {
+        router.push('/board');
+      }, 2000);
+    } catch (error) {
+      console.error('Downgrade error:', error);
+      setAlert({
+        open: true,
+        message: 'Failed to downgrade account. Please try again later.',
+        severity: 'error'
+      });
+    }
+  };
+
+  const closeAlert = () => {
+    setAlert({
+      ...alert,
+      open: false
+    });
   };
 
   return (
     <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" sx={{ bgcolor: '#f4f6fa' }}>
       <Paper sx={{ p: 4, minWidth: 400, maxWidth: 500 }} elevation={3}>
-        <Typography variant="h4" mb={2} color="primary" fontWeight={700} align="center">Upgrade to Kelsa Premium</Typography>
-        <Typography variant="body1" mb={3} align="center">Unlock the full power of Kelsa for just ₹1 (test)!</Typography>
-        <List>
-          <ListItem>
-            <ListItemIcon><CheckCircleIcon color="primary" /></ListItemIcon>
-            <ListItemText primary="Unlimited columns on your boards" />
-          </ListItem>
-          <ListItem>
-            <ListItemIcon><CheckCircleIcon color="primary" /></ListItemIcon>
-            <ListItemText primary="Priority support" />
-          </ListItem>
-          <ListItem>
-            <ListItemIcon><CheckCircleIcon color="primary" /></ListItemIcon>
-            <ListItemText primary="Early access to new features" />
-          </ListItem>
-        </List>
-        <Button variant="contained" color="primary" fullWidth sx={{ mt: 3 }} onClick={handleUpgrade} disabled={!razorpayReady}>
-          {razorpayReady ? 'Upgrade Now' : 'Loading...'}
-        </Button>
-        <Button fullWidth sx={{ mt: 1 }} onClick={() => router.push('/board')}>
-          Maybe later
-        </Button>
+        {isPremium ? (
+          <>
+            <Typography variant="h4" mb={2} color="primary" fontWeight={700} align="center">Kelsa Premium</Typography>
+            <Typography variant="body1" mb={3} align="center">You are currently enjoying premium features!</Typography>
+            {userEmail && (  // Display user email
+              <Typography variant="body2" mb={3} align="center">
+                Logged in as: {userEmail}
+              </Typography>
+            )}
+            <List>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="primary" /></ListItemIcon>
+                <ListItemText primary="Unlimited columns on your boards" />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="primary" /></ListItemIcon>
+                <ListItemText primary="Priority support" />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="primary" /></ListItemIcon>
+                <ListItemText primary="Early access to new features" />
+              </ListItem>
+            </List>
+            <Button variant="outlined" color="warning" fullWidth sx={{ mt: 3 }} onClick={handleDowngrade}>
+              Downgrade to Free
+            </Button>
+            <Button fullWidth sx={{ mt: 1 }} onClick={() => router.push('/board')}>
+              Back to Board
+            </Button>
+          </>
+        ) : (
+          <>
+            <Typography variant="h4" mb={2} color="primary" fontWeight={700} align="center">Upgrade to Kelsa Premium</Typography>
+            <Typography variant="body1" mb={3} align="center">Unlock the full power of Kelsa for just ₹1 (test)!</Typography>
+            <List>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="primary" /></ListItemIcon>
+                <ListItemText primary="Unlimited columns on your boards" />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="primary" /></ListItemIcon>
+                <ListItemText primary="Priority support" />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="primary" /></ListItemIcon>
+                <ListItemText primary="Early access to new features" />
+              </ListItem>
+            </List>
+            <Button variant="contained" color="primary" fullWidth sx={{ mt: 3 }} onClick={handleUpgrade} disabled={!razorpayReady || pendingPayment}>
+              {!razorpayReady ? 'Loading...' : pendingPayment ? 'Processing...' : 'Upgrade Now'}
+            </Button>
+            <Button fullWidth sx={{ mt: 1 }} onClick={() => router.push('/board')}>
+              Maybe later
+            </Button>
+          </>
+        )}
       </Paper>
+      <Snackbar
+        open={alert.open}
+        autoHideDuration={6000}
+        onClose={closeAlert}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert onClose={closeAlert} severity={alert.severity} sx={{ width: '100%' }}>
+          {alert.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
