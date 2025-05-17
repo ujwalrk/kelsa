@@ -127,6 +127,19 @@ export default function UpgradePage() {
         order_id: orderData.id, // Use the order ID from the server
         handler: async function (response) {
           // Verify the payment on the server side
+          // Get the current user's session to include the access token for verification
+          const { data: { session } } = await supabase.auth.getSession();
+
+          if (!session) {
+            setPendingPayment(false);
+            setAlert({
+              open: true,
+              message: 'Authentication failed during payment verification. Please log in again.',
+              severity: 'error'
+            });
+            return;
+          }
+
           const verifyResponse = await fetch('/api/payment/verify', {
             method: 'POST',
             headers: {
@@ -135,7 +148,8 @@ export default function UpgradePage() {
             body: JSON.stringify({
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_order_id: response.razorpay_order_id,
-              razorpay_signature: response.razorpay_signature
+              razorpay_signature: response.razorpay_signature,
+              user_access_token: session.access_token, // Include the user's access token
             }),
           });
 
