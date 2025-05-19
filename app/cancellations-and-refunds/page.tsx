@@ -57,7 +57,7 @@ const CancellationsAndRefundsPage = () => {
 
       {/* Page Content */}
       <Box sx={{ p: 4, maxWidth: 900, mx: 'auto' }}>
-        <Typography variant="h1" component="h1" gutterBottom sx={{ fontWeight: 700, color: '#212121' }}>
+        <Typography variant="h2" component="h2" gutterBottom sx={{ fontWeight: 700, color: '#212121' }}>
           Cancellations and Refunds
         </Typography>
         <Typography variant="body1" component="div" sx={{ color: '#666', lineHeight: 1.7 }}>
