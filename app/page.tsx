@@ -132,46 +132,6 @@ export default function HomePage() {
         ))}
       </Box>
 
-      {/* For Students Section */}
-      <Box sx={{ bgcolor: '#f3f4f6', py: 6, mb: 6 }}>
-        <Box sx={{ maxWidth: 900, mx: 'auto', textAlign: 'center' }}>
-          <Typography variant="h4" fontWeight={700} gutterBottom color="primary">
-            Why Students Love Kelsa
-          </Typography>
-          <Box
-            sx={{
-              mt: 3,
-              display: 'flex',
-              flexWrap: 'wrap',
-              justifyContent: 'center',
-              gap: 3
-            }}
-          >
-            {[
-              {
-                title: "Assignment Tracker",
-                description: "See all your assignments, exams, and deadlines at a glance. Never miss a due date again."
-              },
-              {
-                title: "Personal & Academic Boards",
-                description: "Separate your personal to-dos from your academic work. Stay organized in every area of life."
-              },
-              {
-                title: "Mobile Friendly",
-                description: "Access your boards from anywhere, on any device. Stay productive on the go."
-              }
-            ].map((item, idx) => (
-              <Box key={idx} flex="1 1 250px" maxWidth="300px">
-                <Paper sx={{ p: 3 }}>
-                  <Typography fontWeight={600}>{item.title}</Typography>
-                  <Typography variant="body2">{item.description}</Typography>
-                </Paper>
-              </Box>
-            ))}
-          </Box>
-        </Box>
-      </Box>
-
       {/* Pricing Section */}
       <Box sx={{ maxWidth: 900, mx: 'auto', mb: 10 }}>
         <Typography variant="h4" fontWeight={700} align="center" gutterBottom>
