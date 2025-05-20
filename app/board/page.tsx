@@ -148,29 +148,18 @@ export default function BoardPage() {
 
   const onDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
+
+    // Remove column drag logic
     if (result.type === 'COLUMN') {
-      const { source, destination } = result;
-      if (source.index === destination.index) return;
-      const newLists = Array.from(lists);
-      const [removed] = newLists.splice(source.index, 1);
-      newLists.splice(destination.index, 0, removed);
-      setLists(newLists);
-      if (board && board.id) {
-        for (let i = 0; i < newLists.length; i++) {
-          await supabase.from('lists').update({ position: i }).eq('id', (newLists[i] as List).id);
-        }
-        const { data: updatedLists } = await supabase
-          .from('lists')
-          .select('*')
-          .eq('board_id', board.id)
-          .order('position');
-        setLists(updatedLists || []);
-      }
-      return;
+      // The Droppable for columns is still needed for card dragging, but column dragging is disabled.
+      // No action needed here for column type drag end as it's not allowed by Draggable wrapping.
+      return; // Explicitly return if it's a column drag, though the Draggable is removed.
     }
+
+    // Keep card drag logic
+    setSaving(true);
     const { source, destination, draggableId } = result;
     if (source.droppableId === destination.droppableId && source.index === destination.index) return;
-    setSaving(true);
     const cardIdx = cards.findIndex((c: Card) => c.id === draggableId);
     const card = cards[cardIdx];
     const updatedCard = { ...card, list_id: destination.droppableId, position: destination.index };
@@ -190,12 +179,13 @@ export default function BoardPage() {
       }).eq('id', draggableId);
       const { data: updatedCards } = await supabase.from('cards').select('*').in('list_id', lists.map((l: List) => l.id)).order('position');
       setCards(updatedCards || []);
+      setSaving(false);
     } catch (_e) {
       // Use console.error to make use of '_e' and satisfy ESLint's no-unused-vars rule
       console.error("Error updating card position:", _e);
       setCards(cards); // Revert to original state if update fails
+      setSaving(false); // Ensure saving is set to false even on error
     }
-    setSaving(false);
   };
 
   const handleEditColumn = (col: List) => {
@@ -298,136 +288,131 @@ export default function BoardPage() {
 
       {/* Board columns */}
       <DragDropContext onDragEnd={onDragEnd}>
-        {/* Droppable for columns to enable horizontal dragging of columns */}
-        <Droppable droppableId="board-columns" type="COLUMN" direction="horizontal">
-          {(providedColumns) => (
+        <Droppable droppableId="all-columns" direction="horizontal" type="COLUMN">
+          {(provided) => (
             <Box
-              ref={providedColumns.innerRef}
-              {...providedColumns.droppableProps}
-              display="flex"
-              gap={3}
-              px={4}
-              py={4}
-              sx={{ overflowX: 'auto', paddingBottom: 2 }} // Added overflow-x for horizontal scrolling if many columns
+              ref={provided.innerRef}
+              {...provided.droppableProps}
+              sx={{
+                display: 'flex',
+                overflowX: 'auto',
+                pb: 2,
+                px: 4,
+                gap: 3,
+                // Added styles to hide scrollbar for aesthetic
+                MsOverflowStyle: 'none', // IE and Edge
+                scrollbarWidth: 'none', // Firefox
+                '&::-webkit-scrollbar': { display: 'none' }, // Chrome, Safari, Opera
+              }}
             >
               {lists
                 .sort((a: List, b: List) => a.position - b.position)
-                .map((list: List, index: number) => (
-                  <Draggable draggableId={list.id} index={index} key={list.id}>
-                    {(providedDraggable) => (
-                      <div
-                        ref={providedDraggable.innerRef}
-                        {...providedDraggable.draggableProps}
-                        style={{ ...providedDraggable.draggableProps.style, minWidth: 320, flexShrink: 0 }} // flexShrink to prevent columns from shrinking
+                .map((list: List) => (
+                  <Droppable key={list.id} droppableId={list.id} type="CARD">
+                    {(providedDroppable) => (
+                      <Paper
+                        key={list.id}
+                        ref={providedDroppable.innerRef}
+                        {...providedDroppable.droppableProps}
+                        sx={{
+                          p: 2,
+                          width: 320, // Keep width here for consistency
+                          bgcolor: '#f3f0fa',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          minHeight: 500,
+                          position: 'relative',
+                        }}
                       >
-                        {/* Droppable for cards within each column */}
-                        <Droppable droppableId={list.id} type="CARD">
-                          {(providedDroppable) => (
-                            <Paper
-                              ref={providedDroppable.innerRef}
-                              {...providedDroppable.droppableProps}
-                              sx={{
-                                p: 2,
-                                width: 320, // Keep width here for consistency
-                                bgcolor: '#f3f0fa',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                minHeight: 500,
-                                position: 'relative',
-                              }}
-                            >
-                              {/* Column header with drag handle */}
-                              <Box display="flex" alignItems="center" justifyContent="space-between" mb={1} {...providedDraggable.dragHandleProps}>
-                                <Box display="flex" alignItems="center" gap={1}>
-                                  {editingColumnId === list.id ? (
-                                    <TextField
-                                      value={editingColumnName}
-                                      onChange={e => setEditingColumnName(e.target.value)}
-                                      onBlur={() => handleSaveColumnName(list)}
-                                      onKeyDown={e => {
-                                        if (e.key === 'Enter') handleSaveColumnName(list);
-                                        if (e.key === 'Escape') { setEditingColumnId(null); setEditingColumnName(""); }
-                                      }}
-                                      size="small"
-                                      autoFocus
-                                      sx={{ fontWeight: 700, fontSize: 16, bgcolor: '#fff', borderRadius: 1, minWidth: 120 }}
-                                    />
-                                  ) : (
-                                    <Typography
-                                      variant="subtitle1"
-                                      fontWeight={700}
-                                      sx={{ cursor: 'pointer' }}
-                                      onClick={() => handleEditColumn(list)}
-                                    >
-                                      {list.name}
-                                    </Typography>
-                                  )}
-                                  <Typography variant="caption">{cards.filter((c: Card) => c.list_id === list.id).length}</Typography>
-                                </Box>
-                                <IconButton
-                                  size="small"
-                                  sx={{ color: '#aaa' }}
-                                  onClick={() => setDeleteDialog({ open: true, type: 'column', id: list.id })}
-                                >
-                                  <CloseIcon fontSize="small" />
-                                </IconButton>
-                              </Box>
+                        {/* Column header with drag handle */}
+                        <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+                          <Box display="flex" alignItems="center" gap={1}>
+                            {editingColumnId === list.id ? (
+                              <TextField
+                                value={editingColumnName}
+                                onChange={e => setEditingColumnName(e.target.value)}
+                                onBlur={() => handleSaveColumnName(list)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') handleSaveColumnName(list);
+                                  if (e.key === 'Escape') { setEditingColumnId(null); setEditingColumnName(""); }
+                                }}
+                                size="small"
+                                autoFocus
+                                sx={{ fontWeight: 700, fontSize: 16, bgcolor: '#fff', borderRadius: 1, minWidth: 120 }}
+                              />
+                            ) : (
+                              <Typography
+                                variant="subtitle1"
+                                fontWeight={700}
+                                sx={{ cursor: 'pointer' }}
+                                onClick={() => handleEditColumn(list)}
+                              >
+                                {list.name}
+                              </Typography>
+                            )}
+                            <Typography variant="caption">{cards.filter((c: Card) => c.list_id === list.id).length}</Typography>
+                          </Box>
+                          <IconButton
+                            size="small"
+                            sx={{ color: '#aaa' }}
+                            onClick={() => setDeleteDialog({ open: true, type: 'list', id: list.id })}
+                          >
+                            <CloseIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
 
-                              {/* Card list */}
-                              <Box flex={1} mt={2}>
-                                {cards
-                                  .filter((card: Card) => card.list_id === list.id)
-                                  .sort((a: Card, b: Card) => a.position - b.position)
-                                  .map((card: Card, cardIdx: number) => (
-                                    <Draggable draggableId={card.id} index={cardIdx} key={card.id}>
-                                      {(providedCard) => (
-                                        <Paper
-                                          ref={providedCard.innerRef}
-                                          {...providedCard.draggableProps}
-                                          sx={{ p: 1.5, mb: 1.5, bgcolor: "#fff", position: 'relative' }}
-                                        >
-                                          <Box display="flex" alignItems="center">
-                                            <span {...providedCard.dragHandleProps} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', marginRight: 8 }}>
-                                              <DragIndicatorIcon fontSize="small" sx={{ color: '#bdbdbd' }} />
-                                            </span>
-                                            <Box flex={1}>{card.content}</Box>
-                                            <IconButton
-                                              size="small"
-                                              sx={{ color: '#aaa' }}
-                                              onClick={() => setDeleteDialog({ open: true, type: 'card', id: card.id })}
-                                            >
-                                              <CloseIcon fontSize="small" />
-                                            </IconButton>
-                                          </Box>
-                                        </Paper>
-                                      )}
-                                    </Draggable>
-                                  ))}
-                                {providedDroppable.placeholder}
-                              </Box>
-                              {/* Add card input */}
-                              <Box mt="auto">
-                                <TextField
-                                  size="small"
-                                  placeholder="Add a card"
-                                  value={newCard[list.id] || ""}
-                                  onChange={e => setNewCard({ ...newCard, [list.id]: e.target.value })}
-                                  onKeyDown={e => e.key === "Enter" && handleAddCard(list.id)}
-                                  fullWidth
-                                  sx={{ bgcolor: "#fff", borderRadius: 1 }}
-                                />
-                                <Button onClick={() => handleAddCard(list.id)} sx={{ mt: 1, textTransform: "none" }} startIcon={<AddIcon />} fullWidth>
-                                  Add a card
-                                </Button>
-                              </Box>
-                            </Paper>
-                          )}
-                        </Droppable>
-                      </div>
+                        {/* Card list */}
+                        <Box flex={1} mt={2}>
+                          {cards
+                            .filter((card: Card) => card.list_id === list.id)
+                            .sort((a: Card, b: Card) => a.position - b.position)
+                            .map((card: Card, cardIdx: number) => (
+                              <Draggable draggableId={card.id} index={cardIdx} key={card.id}>
+                                {(providedCard) => (
+                                  <Paper
+                                    ref={providedCard.innerRef}
+                                    {...providedCard.draggableProps}
+                                    sx={{ p: 1.5, mb: 1.5, bgcolor: "#fff", position: 'relative' }}
+                                  >
+                                    <Box display="flex" alignItems="center">
+                                      <span {...providedCard.dragHandleProps} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', marginRight: 8 }}>
+                                        <DragIndicatorIcon fontSize="small" sx={{ color: '#bdbdbd' }} />
+                                      </span>
+                                      <Box flex={1}>{card.content}</Box>
+                                      <IconButton
+                                        size="small"
+                                        sx={{ color: '#aaa' }}
+                                        onClick={() => setDeleteDialog({ open: true, type: 'card', id: card.id })}
+                                      >
+                                        <CloseIcon fontSize="small" />
+                                      </IconButton>
+                                    </Box>
+                                  </Paper>
+                                )}
+                              </Draggable>
+                            ))}
+                          {providedDroppable.placeholder}
+                        </Box>
+                        {/* Add card input */}
+                        <Box mt="auto">
+                          <TextField
+                            size="small"
+                            placeholder="Add a card"
+                            value={newCard[list.id] || ""}
+                            onChange={e => setNewCard({ ...newCard, [list.id]: e.target.value })}
+                            onKeyDown={e => e.key === "Enter" && handleAddCard(list.id)}
+                            fullWidth
+                            sx={{ bgcolor: "#fff", borderRadius: 1 }}
+                          />
+                          <Button onClick={() => handleAddCard(list.id)} sx={{ mt: 1, textTransform: "none" }} startIcon={<AddIcon />} fullWidth>
+                            Add a card
+                          </Button>
+                        </Box>
+                      </Paper>
                     )}
-                  </Draggable>
+                  </Droppable>
                 ))}
-              {providedColumns.placeholder} {/* Placeholder for column dragging */}
+              {provided.placeholder} {/* Placeholder for column dragging */}
               {/* Add list placeholder for non-premium users */}
               <Paper sx={{ p: 2, width: 320, bgcolor: showAddColumnInput ? "#f3f0fa" : "#e9e6f7", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 500, cursor: !showAddColumnInput && (!premium && lists.length >= 3) ? 'pointer' : 'default', border: !showAddColumnInput && (!premium && lists.length >= 3) ? '2px dashed #a78bfa' : undefined }}
                 onClick={() => {
@@ -482,7 +467,7 @@ export default function BoardPage() {
               if (deleteDialog.type === 'card') {
                 await supabase.from('cards').delete().eq('id', deleteDialog.id);
                 setCards(cards.filter((c: Card) => c.id !== deleteDialog.id));
-              } else if (deleteDialog.type === 'column') {
+              } else if (deleteDialog.type === 'list') {
                 await supabase.from('cards').delete().eq('list_id', deleteDialog.id);
                 await supabase.from('lists').delete().eq('id', deleteDialog.id);
                 setLists(lists.filter((l: List) => l.id !== deleteDialog.id));
