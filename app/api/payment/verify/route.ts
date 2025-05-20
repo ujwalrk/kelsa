@@ -63,11 +63,11 @@ export async function POST(req: NextRequest) {
       // Still continue to update user to premium
     }
 
-    // Update user metadata to include premium flag using the retrieved user_id
-    const { error: updateUserError } = await supabase.auth.admin.updateUserById(
-      userId,
-      { user_metadata: { premium: true } }
-    );
+    // Update is_premium flag in the profiles table
+    const { error: updateUserError } = await supabase
+      .from('profiles')
+      .update({ is_premium: true })
+      .eq('id', userId);
     
     if (updateUserError) {
       console.error('Failed to update user status:', updateUserError);

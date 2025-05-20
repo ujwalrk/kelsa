@@ -65,17 +65,30 @@ export default function BoardPage() {
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (!user || userError) {
+        console.error("Error fetching user:", userError);
         router.replace("/login");
         return;
       }
       setUser(user);
-      let isPremium = user.user_metadata?.premium;
-      if (isPremium === undefined) {
-        isPremium = false;
+
+      // Fetch the user's profile to get the premium status
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('is_premium')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError || !profile) {
+        console.error("Error fetching profile:", profileError);
+        // Handle the case where a profile might not exist (e.g., new user). Assume not premium.
+        setPremium(false);
+      } else {
+        setPremium(profile.is_premium || false);
       }
-      setPremium(isPremium);
+
       let { data: boards } = await supabase.from("boards").select("*").eq("user_id", user.id);
       if (!boards || boards.length === 0) {
         const { data: newBoard } = await supabase.from("boards").insert([{ name: "My First Board", user_id: user.id }]).select().single();
