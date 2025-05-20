@@ -2,7 +2,6 @@ import { NextResponse, NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { createClient } from '@supabase/supabase-js';
 
 // Interface for the request body
 interface VerifyRequestBody {
