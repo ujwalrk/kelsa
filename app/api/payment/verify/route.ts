@@ -32,49 +32,52 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Initialize Supabase client - rely on cookies
+    // Initialize Supabase client to interact with database
     const supabase = createRouteHandlerClient({ cookies });
-    
-    // Get the current user
-    const { data: { user } } = await supabase.auth.getUser();
-    console.log("User in /api/payment/verify:", user);
-    
-    if (!user) {
+
+    // Find the transaction record using the order_id
+    const { data: transaction, error: transactionFetchError } = await supabase
+      .from('transactions')
+      .select('user_id')
+      .eq('order_id', razorpay_order_id)
+      .single();
+
+    if (transactionFetchError || !transaction) {
+      console.error('Error fetching transaction or transaction not found:', transactionFetchError);
       return NextResponse.json({
         success: false,
-        message: 'User not authenticated'
-      }, { status: 401 });
+        message: 'Transaction not found or error fetching transaction'
+      }, { status: 404 });
     }
     
-    // Create transaction record
-    const { error: transactionError } = await supabase
+    const userId = transaction.user_id;
+
+    // Update the transaction record status
+    const { error: updateTransactionError } = await supabase
       .from('transactions')
-      .insert({
-        user_id: user.id,
-        payment_id: razorpay_payment_id,
-        order_id: razorpay_order_id,
-        amount: 1, // This is your test amount
-        status: 'success'
-      });
-    
-    if (transactionError) {
-      console.error('Transaction record error:', transactionError);
+      .update({ payment_id: razorpay_payment_id, status: 'success' })
+      .eq('order_id', razorpay_order_id);
+
+    if (updateTransactionError) {
+      console.error('Error updating transaction record:', updateTransactionError);
       // Still continue to update user to premium
     }
+
+    // Update user metadata to include premium flag using the retrieved user_id
+    const { error: updateUserError } = await supabase.auth.admin.updateUserById(
+      userId,
+      { user_metadata: { premium: true } }
+    );
     
-    // Update user metadata to include premium flag
-    const { error: updateError } = await supabase.auth.updateUser({
-      data: { premium: true }
-    });
-    
-    if (updateError) {
+    if (updateUserError) {
+      console.error('Failed to update user status:', updateUserError);
       return NextResponse.json({
         success: false,
         message: 'Failed to update user status'
       }, { status: 500 });
     }
     
-    console.log("User successfully verified and status updated:", user.id);
+    console.log("User successfully verified and status updated for user ID:", userId);
     
     return NextResponse.json({
       success: true,
