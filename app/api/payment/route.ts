@@ -9,62 +9,106 @@ interface PaymentRequestBody {
   userId: string;
 }
 
-// Define the error type for Razorpay
-interface RazorpayError extends Error {
+// Define the error type for Razorpay (more comprehensive)
+interface RazorpaySDKError {
+  code?: string;
+  description?: string;
+  field?: string; // Often present for validation errors
+  // Add other properties if Razorpay SDK returns them consistently
+}
+
+interface CustomError extends Error {
   statusCode?: number;
-  error?: {
-    code?: string;
-    description?: string;
-  };
+  error?: RazorpaySDKError;
+  message: string; // Ensure message is always a string
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as PaymentRequestBody;
     const { amount, userId } = body;
-    
+
+    // --- Input Validation ---
+    if (typeof amount !== 'number' || amount <= 0) {
+      return NextResponse.json({ error: 'Invalid amount provided.' }, { status: 400 });
+    }
+    if (!userId) {
+      return NextResponse.json({ error: 'User ID is required.' }, { status: 400 });
+    }
+
     // Initialize Supabase client for database operations
     const supabase = createRouteHandlerClient({ cookies });
 
-    // Initialize Razorpay with your key_id and key_secret
-    const razorpay = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID || '',
-      key_secret: process.env.RAZORPAY_KEY_SECRET || '',
-    });
-    
-    // Ensure we have the keys
-    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-      throw new Error('Razorpay credentials are not configured');
+    // --- Environment Variable Check ---
+    const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
+    const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
+
+    if (!razorpayKeyId || !razorpayKeySecret) {
+      console.error('Environment variables RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET are not set.');
+      return NextResponse.json(
+        { error: 'Server configuration error: Razorpay credentials missing.' },
+        { status: 500 }
+      );
     }
 
+    // Initialize Razorpay with your key_id and key_secret
+    const razorpay = new Razorpay({
+      key_id: razorpayKeyId,
+      key_secret: razorpayKeySecret,
+    });
+
     // Create a payment capture to generate a payment link
-    const paymentCapture = 1;
-    const amountInPaisa = amount * 100; // Convert to paisa
-    
+    const paymentCapture = 1; // Auto-capture the payment
+    const amountInPaisa = Math.round(amount * 100); // Convert to paisa, round to nearest integer
+
     const options = {
       amount: amountInPaisa,
       currency: 'INR',
-      receipt: `receipt_${Date.now()}`,
+      receipt: `receipt_${Date.now()}_${userId}`, // More specific receipt
       payment_capture: paymentCapture,
     };
-    
-    // Create order using the Razorpay SDK
-    const response = await razorpay.orders.create(options);
-    
+
+    let response;
+    try {
+      // Create order using the Razorpay SDK
+      response = await razorpay.orders.create(options);
+      console.log('Razorpay order created successfully:', response.id);
+    } catch (razorpayCreateError: unknown) {
+      const err = razorpayCreateError as CustomError;
+      console.error(
+        'Razorpay order creation failed:',
+        err.message || 'Unknown error',
+        'Status Code:', err.statusCode,
+        'Details:', err.error
+      );
+      // Return specific error from Razorpay
+      return NextResponse.json({
+        error: 'Razorpay order creation failed',
+        message: err.message || 'An unexpected error occurred during order creation.',
+        details: err.error,
+      }, { status: err.statusCode || 500 });
+    }
+
     // Create a transaction record in Supabase
+    // This is crucial for verification, so if it fails, the whole process should fail.
     const { error: transactionError } = await supabase
       .from('transactions')
       .insert({
         user_id: userId,
         order_id: response.id,
-        amount: amount, // Store in base unit (e.g., INR), not paisa
+        amount: amount, // Store in base unit (e.g., INR)
         status: 'pending', // Initial status
       });
 
     if (transactionError) {
-      console.error('Error inserting transaction record:', transactionError);
-      // Depending on desired behavior, you might want to roll back the Razorpay order
-      // For now, we log and proceed, but the verify step will likely fail if no transaction record exists.
+      console.error('Error inserting transaction record into Supabase:', transactionError);
+      // CRITICAL: If transaction record fails, the payment cannot be verified later.
+      // You might want to attempt to cancel the Razorpay order here if possible,
+      // or at least inform the client that they need to contact support.
+      return NextResponse.json({
+        error: 'Failed to record transaction in database.',
+        message: transactionError.message,
+      }, { status: 500 });
     }
 
     // Return the order details to the client
@@ -72,23 +116,17 @@ export async function POST(req: NextRequest) {
       id: response.id,
       currency: response.currency,
       amount: response.amount,
+      // You might want to return `key_id` here for frontend integration if it's not hardcoded
+      key_id: razorpayKeyId,
     });
+
   } catch (err: unknown) {
-    // Type guard to handle RazorpayError properties if available
-    const razorpayError = err as RazorpayError;
-    
-    console.error(
-      'Razorpay order creation error:',
-      razorpayError.message || 'Unknown error',
-      'Status Code:', razorpayError.statusCode,
-      'Details:', razorpayError.error
+    // Catch any unexpected errors during request parsing or initial setup
+    const error = err as Error;
+    console.error('API Error during order creation:', error.message);
+    return NextResponse.json(
+      { error: 'Internal server error during order creation.', message: error.message },
+      { status: 500 }
     );
-    
-    return NextResponse.json({ 
-      error: 'Razorpay order failed',
-      message: razorpayError.message || 'Unknown error',
-      details: razorpayError.error,
-      statusCode: razorpayError.statusCode || 500
-    }, { status: razorpayError.statusCode || 500 });
   }
 }
