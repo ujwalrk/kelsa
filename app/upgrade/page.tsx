@@ -119,7 +119,7 @@ export default function UpgradePage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          amount: 1, // 1 INR for test
+          amount: 0.01, // 0.01 INR (1 paisa) for test
           userId: session.user.id, // Include user ID in the request body
         }),
       });
