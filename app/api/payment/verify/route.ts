@@ -9,13 +9,12 @@ interface VerifyRequestBody {
   razorpay_payment_id: string;
   razorpay_order_id: string;
   razorpay_signature: string;
-  user_access_token?: string; // Add optional access token
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as VerifyRequestBody;
-    const { razorpay_payment_id, razorpay_order_id, razorpay_signature, user_access_token } = body;
+    const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = body;
     
     // Get Razorpay key secret for verification
     const secret = process.env.RAZORPAY_KEY_SECRET || '';
@@ -34,36 +33,8 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Initialize Supabase client - prefer token if available, fallback to cookies
-    let supabase;
-    if (user_access_token) {
-      // Use createClient and set the session if access token is provided
-      supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          auth: {
-            persistSession: false, // Do not persist session on the server
-          },
-        }
-      );
-      const { data: { session }, error: setSessionError } = await supabase.auth.setSession({
-        access_token: user_access_token,
-        refresh_token: '' // Refresh token is not needed for this context
-      });
-
-      if (setSessionError || !session) {
-        console.error('Failed to set session with access token:', setSessionError);
-        return NextResponse.json({
-          success: false,
-          message: 'Authentication failed with provided token'
-        }, { status: 401 });
-      }
-
-    } else {
-      // Fallback to cookie-based authentication if no token
-      supabase = createRouteHandlerClient({ cookies });
-    }
+    // Initialize Supabase client - rely on cookies
+    const supabase = createRouteHandlerClient({ cookies });
     
     // Get the current user
     const { data: { user } } = await supabase.auth.getUser();
