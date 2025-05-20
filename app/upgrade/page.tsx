@@ -99,6 +99,19 @@ export default function UpgradePage() {
         return;
       }
 
+      // Get the user's session to pass the user ID to the API route
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !session || !session.user) {
+        console.error('Error fetching user session:', sessionError);
+        setAlert({
+          open: true,
+          message: 'Could not retrieve user session. Please try logging in again.',
+          severity: 'error'
+        });
+        return;
+      }
+
       // First create order from the server
       const response = await fetch('/api/payment', {
         method: 'POST',
@@ -107,6 +120,7 @@ export default function UpgradePage() {
         },
         body: JSON.stringify({
           amount: 1, // 1 INR for test
+          userId: session.user.id, // Include user ID in the request body
         }),
       });
 
@@ -127,19 +141,6 @@ export default function UpgradePage() {
         order_id: orderData.id, // Use the order ID from the server
         handler: async function (response) {
           // Verify the payment on the server side
-          // Get the current user's session to include the access token for verification
-          const { data: { session } } = await supabase.auth.getSession();
-
-          if (!session) {
-            setPendingPayment(false);
-            setAlert({
-              open: true,
-              message: 'Authentication failed during payment verification. Please log in again.',
-              severity: 'error'
-            });
-            return;
-          }
-
           const verifyResponse = await fetch('/api/payment/verify', {
             method: 'POST',
             headers: {
@@ -149,7 +150,6 @@ export default function UpgradePage() {
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_order_id: response.razorpay_order_id,
               razorpay_signature: response.razorpay_signature,
-              user_access_token: session.access_token, // Include the user's access token
             }),
           });
 

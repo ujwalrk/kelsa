@@ -6,6 +6,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 // Define an interface for the request body
 interface PaymentRequestBody {
   amount: number;
+  userId: string;
 }
 
 // Define the error type for Razorpay
@@ -20,20 +21,10 @@ interface RazorpayError extends Error {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as PaymentRequestBody;
+    const { amount, userId } = body;
     
-    // Initialize Supabase client to get the user
+    // Initialize Supabase client for database operations
     const supabase = createRouteHandlerClient({ cookies });
-
-    // Get the current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      console.error('Error fetching user in /api/payment:', userError);
-      return NextResponse.json({
-        success: false,
-        message: 'User not authenticated or could not fetch user'
-      }, { status: 401 });
-    }
 
     // Initialize Razorpay with your key_id and key_secret
     const razorpay = new Razorpay({
@@ -48,10 +39,10 @@ export async function POST(req: NextRequest) {
 
     // Create a payment capture to generate a payment link
     const paymentCapture = 1;
-    const amount = body.amount * 100; // Convert to paisa
+    const amountInPaisa = amount * 100; // Convert to paisa
     
     const options = {
-      amount: amount,
+      amount: amountInPaisa,
       currency: 'INR',
       receipt: `receipt_${Date.now()}`,
       payment_capture: paymentCapture,
@@ -64,9 +55,9 @@ export async function POST(req: NextRequest) {
     const { error: transactionError } = await supabase
       .from('transactions')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         order_id: response.id,
-        amount: body.amount, // Store in base unit (e.g., INR), not paisa
+        amount: amount, // Store in base unit (e.g., INR), not paisa
         status: 'pending', // Initial status
       });
 
